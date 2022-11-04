@@ -1,0 +1,3 @@
+*.pyc
+sandbox
+test_case/config.case.ini
