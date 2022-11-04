@@ -1,6 +1,6 @@
-# Aroma
-![](https://github.com/Novarizark/Aroma/blob/master/Aroma.png?raw=true)
-Aroma is a Lagrangian dispersion model suitable for the simulation of atmospheric transport processes within O(1-100km) spatial scales.
+# LAVENDER 
+![](https://github.com/Novarizark/lavender/blob/master/lavender.png?raw=true)
+Lavender is a Lagrangian dispersion model suitable for the simulation of atmospheric transport processes within O(1-100km) spatial scales.
 
 ### Input Files
 
