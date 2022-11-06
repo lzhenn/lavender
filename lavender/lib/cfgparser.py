@@ -2,7 +2,7 @@
 """configuration funcs to get parameters from user"""
 import os
 import configparser
-from utils import utils
+from . import utils
 
 print_prefix='lib.cfgparser>>'
 
@@ -16,6 +16,11 @@ def write_cfg(cfg_hdl, config_fn):
     """ Simply write the config files """
     with open(config_fn, 'w') as configfile:
         cfg_hdl.write(configfile)
+
+def cfg_get_varlist(cfg, key1, key2):
+    varlist=cfg[key1][key2].split(',')
+    varlist=[ele.strip() for ele in varlist]
+    return varlist
 
 def merge_cfg(cfg_org, cfg_tgt):
     """ merge the dynamic and static cfg """

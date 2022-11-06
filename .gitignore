@@ -1,3 +1,4 @@
 *.pyc
+*.log
 sandbox
 test_case/config.case.ini

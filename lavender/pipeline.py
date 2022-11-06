@@ -12,8 +12,10 @@ Nov 03, 2022 --- Kick off!
 L_Zealot
 '''
 import sys, os
+import logging, logging.config
 from shutil import copyfile
-from . import utils 
+from .lib import cfgparser, utils, painter
+
 # path to the top-level handler
 CWD=sys.path[0]
 
@@ -22,24 +24,24 @@ MWD=os.path.split(os.path.realpath(__file__))[0]
 
 def waterfall():
     '''
-    Waterfall the model run!
+    Waterfall rundown!
     '''
-    if not(os.path.exists(CWD+'/config.case.ini')):
-        copyfile(MWD+'/conf/config.case.ini', CWD+'/config.case.ini')
-        print('Template config file created, please modify it and run again!')
-    exit()
-    cfg_hdl=utils.read_config(CWD+'/config.case.ini')
+    #if not(os.path.exists(CWD+'/config.case.ini')):
+    copyfile(MWD+'/conf/config.case.ini', CWD+'/config.case.ini')
+    #print('Template config file created, please modify it and run again!')
+    cfg=cfgparser.read_cfg(CWD+'/config.case.ini')
+    
     # logging manager
-    logging.config.fileConfig('./conf/logging_config.ini')
+    logging.config.fileConfig(MWD+'/conf/config.logging.ini')
     
-    utils.write_log('Read Config...')
-    cfg_basic_hdl=lib.cfgparser.read_cfg('./conf/config.basic.ini')
+    utils.write_log('Config validation test...')
+    #cfgparser.cfg_valid_test(cfg)
 
-    lib.cfgparser.cfg_valid_test(cfg_basic_hdl)
-    cfg_hdl=lib.cfgparser.read_cfg('./conf/config.ini')
-
-    cfg_hdl=lib.cfgparser.merge_cfg(cfg_basic_hdl, cfg_hdl)
+    if cfg['postprocess'].getboolean('visualize'):
+        utils.write_log('Post 3D rendering...')
+        painter.render3d(cfg)
     
+    exit()
 
     # lock the tasks Apr 1 2021
     cfg_hdl['CORE']['ntasks']='1'
