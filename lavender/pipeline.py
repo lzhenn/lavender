@@ -8,12 +8,14 @@ This is the main script to drive the model
 
 History:
 Nov 03, 2022 --- Kick off! 
+Nov 06, 2022 --- FLEXPART output support for rendering
 
 L_Zealot
 '''
 import sys, os
 import logging, logging.config
 from shutil import copyfile
+from .core import driver
 from .lib import cfgparser, utils, painter
 
 # path to the top-level handler
@@ -37,11 +39,18 @@ def waterfall():
     utils.write_log('Config validation test...')
     #cfgparser.cfg_valid_test(cfg)
 
+    utils.write_log('Build driver...')
+    drv=driver.Driver(cfg)
+    
+    # driver drives!
+    drv.drive()
+
+    exit()
+    
     if cfg['postprocess'].getboolean('visualize'):
         utils.write_log('Post 3D rendering...')
-        painter.render3d(cfg)
+        painter.render3d(cfg,MWD)
     
-    exit()
 
     # lock the tasks Apr 1 2021
     cfg_hdl['CORE']['ntasks']='1'
