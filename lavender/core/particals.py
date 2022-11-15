@@ -52,7 +52,7 @@ class Particals:
             __ARIP32.copy(),__ARIP32.copy(),__ARIP32.copy()
         self.dx, self.dy, self.dz=\
             __ARFP32.copy(),__ARFP32.copy(),__ARFP32.copy()
-        self.topo=__ARFP32.copy(),__ARFP32.copy()
+        self.ztra1,self.topo=__ARFP32.copy(),__ARFP32.copy()
         self.pvi,self.qvi,self.rhoi,self.hmixi=\
             __ARFP32.copy(),__ARFP32.copy(),__ARFP32.copy(),__ARFP32.copy()
         self.tri,self.tti=__ARFP32.copy(),__ARFP32.copy()
@@ -65,6 +65,7 @@ class Particals:
     def update(self, emis):
         """ update partical array by emission """ 
         self.itramem=np.linspace(-emis.emis_span,0,self.nptcls)  
+        self.z0=emis.height
         self.ix, self.iy, self.iz=\
             self.ix+emis.ipos[0],\
             self.iy+emis.ipos[1],\
@@ -87,8 +88,8 @@ class Particals:
             self.ix, self.iy, self.iz, 
             self.dx, self.dy, self.dz,
             self.itramem, self.ipos0, 
-            mesh.dt, mesh.dx,
-            mesh.magic_idz,mesh.sep_z) 
+            mesh.dt, mesh.dx, self.z0,
+            mesh.z_c0,mesh.z_c1) 
 
 
         '''

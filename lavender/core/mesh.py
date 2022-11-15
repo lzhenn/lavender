@@ -36,6 +36,7 @@ class Emission:
         iz = math_func.get_closest_idx(mesh.z, self.height)
         
         self.ipos=np.array([ix,iy,iz]).astype(np.int32)
+
 class Mesh:
 
     '''
@@ -47,9 +48,9 @@ class Mesh:
     -----------
     '''
     def __init__(self, inhdl):
-        self.z=const.TEST_Z['layers']
-        self.magic_idz=const.TEST_Z['magic_idz']
-        self.sep_z=const.TEST_Z['sep_z']
+        self.z=const.L53_LOG['layers']
+        self.z_c0=const.L53_LOG['c0']
+        self.z_c1=const.L53_LOG['c1']
 
         self.construct_frm_mesh(inhdl, 0)
         self.dx=inhdl.dx

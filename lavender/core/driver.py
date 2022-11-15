@@ -62,11 +62,12 @@ class Driver:
     
     def debuginfo(self):
             iz,iy,ix=self.ptcls.iz[-1],self.ptcls.iy[-1],self.ptcls.ix[-1]
-            it=self.ptcls.itramem[-1]
-            utils.write_log(print_prefix+'ptcl0[iz,iy,ix]=(%04d,%04d,%04d),it=%10.1f' % ( 
-                iz,iy,ix,it),lvl=10)
-            utils.write_log(print_prefix+'Uptcl0[iz,iy,ix]=%4.1f' % (
-                self.mesh.u[iz,iy,ix]),lvl=10)
+            it=self.ptcls.itramem[-1] 
+            dz=self.ptcls.dz[-1]
+            utils.write_log(print_prefix+'ptcl0[iz,iy,ix]=(%04d,%04d,%04d),it=%10.1f,dz=%10.1f' % ( 
+                iz,iy,ix,it,dz),lvl=10)
+            utils.write_log(print_prefix+'u=%4.1f,v=%4.1f,w=%8.7f' % (
+                self.mesh.u[iz,iy,ix],self.mesh.v[iz,iy,ix],self.mesh.w[iz,iy,ix]),lvl=10)
  
 class TimeManager():
     '''

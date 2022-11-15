@@ -7,17 +7,24 @@ import numpy as np
 import numba 
 print_prefix='core.lagrange>>'
 
-# CONSTANT
+@numba.njit(parallel=True,fastmath=True)   
+def non_negflag(x):
+    '''
+    super optimized function to 
+    return the non-negative flag of x
+    val = (x>=0: 1, x<0: 0)
+    '''
+    return np.logical_not(np.signbit(x))
 
 @numba.njit(parallel=True,fastmath=True)   
-def adv_kernel(
+def adv(
     v, s, idx, idy, idz, dt, eflag):
     for i in numba.prange(eflag.shape[0]):
         s[i]=s[i]+eflag[i]*v[idz[i],idy[i],idx[i]]*dt
     return s
 
 @numba.njit(parallel=True,fastmath=True)
-def update_pos_kernel(
+def reloc_xy(
     mat_idx, org, upbnd, dp, rDX):
     '''
     upbnd: upper bound of the index
@@ -27,42 +34,61 @@ def update_pos_kernel(
     '''
     #for i in numba.prange(mat_idx.shape[0]):
     mat_idx=org+(dp*rDX)
-    
-    mat_idx=np.where(mat_idx<0.0,0.0,mat_idx)
-    mat_idx=np.where(mat_idx>=upbnd,-1.0,mat_idx)
+    mat_idx=non_negflag(mat_idx)*mat_idx 
+    mat_idx=mat_idx+non_negflag(mat_idx-upbnd)*(upbnd-mat_idx)
+    #mat_idx=np.where(mat_idx>=upbnd,-1.0,mat_idx)
     return mat_idx
+
+@numba.njit(parallel=True,fastmath=True)
+def reloc_z(
+    mat_idz, z0, upbnd, dp, c0, rc0, lnc1):
+    '''
+    upbnd: upper bound of the index
+    dp: displacement
+    org: original position
+    rDX: 1/DX
+    '''
+    #for i in numba.prange(mat_idx.shape[0]):
+    mat_idz=(np.log(non_negflag(z0+dp)*(z0+dp)+c0)*rc0)*lnc1
+    mat_idz=mat_idz+non_negflag(mat_idz-upbnd)*(upbnd-mat_idz)
+    #mat_idz=np.where(mat_idz>=upbnd,-1.0,mat_idz)
+    return mat_idz
+
 
 def cpu_advection(
     u, v, w, pidx, pidy, pidz, pdx, pdy, pdz,
-    pt, ip0, dt, DX, idzs, sep_zs):
+    pt, ip0, dt, DX, z0, zc0, zc1):
     """
     March the air parcel (single) in the UVW fields
     """
     rDX=1.0/DX
-    rsep_zs=1.0/sep_zs[0]
+    rc0=1.0/zc0
+    rlnc1=1.0/np.log(zc1)
     nz,ny,nx=w.shape
 
     # update position
     pt=pt+dt
     # whether the parcel is emitted
-    emit_flag=np.sign(np.sign(pt)+1)
+    emit_flag=non_negflag(pt)
 
     # calculate the displacement
-    pdx=adv_kernel(u, pdx, pidx, pidy, pidz, dt, emit_flag)
-    pdy=adv_kernel(v, pdy, pidx, pidy, pidz, dt, emit_flag)
-    pdz=adv_kernel(w, pdz, pidx, pidy, pidz, dt, emit_flag)
-
-    # update position
-    pidx=pidx.astype(float)
-    pidx=update_pos_kernel(pidx, ip0[0], nx, pdx, rDX)
+    pdx=adv(u, pdx, pidx, pidy, pidz, dt, emit_flag)
+    pdy=adv(v, pdy, pidx, pidy, pidz, dt, emit_flag)
+    pdz=adv(w, pdz, pidx, pidy, pidz, dt, emit_flag)
     
-    pidx=pidx.astype(int)
-    pidy=pidy.astype(float)
-    pidy=update_pos_kernel(pidy, ip0[1], ny, pdy, rDX)
-    pidy=pidy.astype(int)
+    # update position
     pidz=pidz.astype(float)
-    pidz=update_pos_kernel(pidz, ip0[2], nz, pdz, rDX)
+    pidz=reloc_z(pidz, z0, nz, pdz, zc0, rc0, rlnc1)
     pidz=pidz.astype(int)
+
+    pidx=pidx.astype(float)
+    pidx=reloc_xy(pidx, ip0[0], nx, pdx, rDX)
+    pidx=pidx.astype(int)
+    
+    pidy=pidy.astype(float)
+    pidy=reloc_xy(pidy, ip0[1], ny, pdy, rDX)
+    pidy=pidy.astype(int)
+    
     #Need optimization here (60-70% of the span)
     '''
     pidx=ip0[0]+(pdx*rDX)
@@ -86,7 +112,7 @@ def cpu_advection(
 
 @numba.jit(nopython=True)   
 def cpu_advection_all(
-    u, v, w, pidx, pidy, pidz, pt, dt, DX, idzs, sep_zs):
+    u, v, w, pidx, pidy, pidz, pt, dt, DX, zc0, zc1):
     """
     March the air parcel (single) in the UVW fields
     """
