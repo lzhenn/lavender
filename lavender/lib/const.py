@@ -11,10 +11,14 @@ CWD=sys.path[0]
 
 # Physical Constants
 G=9.8 # m/s2
-R_EARTH=6371000
+R_EARTH=6370000
 T0=273.15 # K
-DIS2LAT=180/(np.pi*R_EARTH)        #Distance to Latitude
+DEG2RAD=np.pi/180.0
+RAD2DEG=180.0/np.pi
 SCALE_VEL=5.0 # m/s
+LATDIS=111000.0 # m
+
+MAX_DT=3600 # s
 
 # Calculate Mesh
 L53_LOG={'layers':np.array([10*np.power(1.16, i)-10 for i in range(0,53)]),

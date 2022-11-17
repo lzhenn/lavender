@@ -3,10 +3,14 @@
 import datetime
 import numpy as np
 from scipy import interpolate
-from ..lib import const, math_func
+from ..lib import const, math_func, utils
 import wrf
 
 print_prefix='core.mesh>>'
+R2D=const.RAD2DEG
+D2R=const.DEG2RAD
+RE=const.R_EARTH
+
 
 class Emission:
     '''
@@ -30,12 +34,17 @@ class Emission:
         self.height=float(cfg['EMISSION']['height'])
         self.xmass=float(cfg['EMISSION']['total_mass'])
         self.xmass_per_sec=self.xmass/self.emis_span
+
         (iy,ix)=(math_func.get_closest_idxy(
-            inhdl.XLAT.values, inhdl.XLONG.values, self.lat, self.lon))
-        
+            inhdl.XLAT.values, inhdl.XLONG.values, self.lat, self.lon))        
         iz = math_func.get_closest_idx(mesh.z, self.height)
-        
         self.ipos=np.array([ix,iy,iz]).astype(np.int32)
+
+        dlat=inhdl.XLAT.values[iy,ix]-self.lat
+        dlon=inhdl.XLONG.values[iy,ix]-self.lon
+        # vector from emission to nearest grid center (Mass mesh) dx & dy
+        (self.EOdx,self.EOdy)=\
+            dll2dxy(dlat, dlon, self.lat, self.lon, inhdl)
 
 class Mesh:
 
@@ -52,7 +61,16 @@ class Mesh:
         self.z_c0=const.L53_LOG['c0']
         self.z_c1=const.L53_LOG['c1']
 
-        self.construct_frm_mesh(inhdl, 0)
+        self.inhdl=inhdl
+
+        (self.u0, self.v0, self.w0)=\
+            self.construct_frm_mesh(inhdl, 0)
+        
+        (self.u1, self.v1, self.w1)=\
+            self.construct_frm_mesh(inhdl, 1)
+        
+        self.u, self.v, self.w=self.u0, self.v0, self.w0
+        
         self.dx=inhdl.dx
 
     def construct_frm_mesh(self, inhdl, frm):
@@ -63,10 +81,82 @@ class Mesh:
         inhdl.load_frame(frm)    
         f = interpolate.interp1d(
             inhdl.z.values, inhdl.U.values, axis=0,fill_value='extrapolate')
-        self.u = f(self.z)
+        u = f(self.z)
         f = interpolate.interp1d(
             inhdl.z.values, inhdl.V.values, axis=0,fill_value='extrapolate')
-        self.v = f(self.z)
+        v = f(self.z)
         f = interpolate.interp1d(
             inhdl.z_stag.values, inhdl.W.values, axis=0,fill_value='extrapolate')
-        self.w = f(self.z)
+        w = f(self.z)
+        return u,v,w
+
+    def update_wind(self, iofrm, iofrac):
+        if iofrac==0.0:
+            self.u0, self.v0, self.w0 = self.u1, self.v1, self.w1
+            (self.u1,self.v1, self.w1)=\
+                self.construct_frm_mesh(self.inhdl, iofrm)
+        self.u=self.u0*(1-iofrac)+self.u1*iofrac
+        self.v=self.v0*(1-iofrac)+self.v1*iofrac
+        self.w=self.w0*(1-iofrac)+self.w1*iofrac
+
+
+def dxy2dll(dx, dy, lat0, lon0, inhdl):
+    '''
+    convert dx, dy to dlat, dlon
+    '''
+    if inhdl.proj==1:
+        iy,ix=math_func.get_closest_idxy(
+            inhdl.XLAT.values, inhdl.XLONG.values, lat0, lon0)
+        sinw,cosw=inhdl.sinw[iy,ix].values, inhdl.cosw[iy,ix].values
+        
+        # rotate coordinate 
+        dwe=dx*cosw-dy*sinw
+        dsn=dy*cosw+dx*sinw
+        
+        dlat=dsn/RE*R2D
+        dlon=R2D*dwe/(np.cos(lat0*D2R)*RE)
+
+    elif inhdl.proj==3:
+        # mercator projection
+        dlat=dsn*R2D/RE
+        dlon=R2D*dwe/(np.cos(lat0*D2R)*RE)
+    else:
+        utils.throw_error('projection not supported')
+    griddlat=R2D*inhdl.dx/const.LATDIS
+    if abs(dlat)> griddlat or abs(dlon)>griddlat:
+        utils.write_log('dlat=%6.4fdeg, dlon=%6.4fdeg'%(dlat, dlon), 40)
+        utils.throw_error(
+            'dx or dy too large that exceed grid size: %10.1fm'%inhdl.dx)
+    return dlat, dlon
+
+
+def dll2dxy(dlat, dlon, lat0, lon0, inhdl):
+    '''
+    convert dlat, dlon to dx, dy
+    '''
+    if inhdl.proj==1:
+        iy,ix=math_func.get_closest_idxy(
+            inhdl.XLAT.values, inhdl.XLONG.values, lat0, lon0)
+        sinw,cosw=inhdl.sinw[iy,ix].values, inhdl.cosw[iy,ix].values
+        
+        #Uearth = U*cosalpha - V*sinalpha
+        #Vearth = V*cosalpha + U*sinalpha
+        # in meter
+        dwe=RE*np.cos(lat0*D2R)*dlon*D2R
+        dsn=RE*dlat*D2R
+        
+        # lambert projection
+        dx=dwe*cosw+dsn*sinw
+        dy=-dwe*sinw+dsn*cosw
+
+    elif inhdl.proj==3:
+        # mercator projection
+        dy=dlat*D2R*RE
+        dx=dlon*D2R*RE*np.cos(lat0*D2R)
+    else:
+        utils.throw_error('projection not supported')
+
+    if abs(dx)>inhdl.dx or abs(dy)>inhdl.dx:
+        utils.write_log('dx=%10.1fm, dy=%10.1fm'%(dx, dy), 40)
+        utils.throw_error('dx or dy too large that exceed grid size: %10.1fm'%inhdl.dx)
+    return dx, dy

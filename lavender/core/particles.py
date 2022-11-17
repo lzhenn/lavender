@@ -11,7 +11,7 @@ from . import kernel
 import time
 print_prefix='core.particals>>'
 
-class Particals:
+class Particles:
 
     '''
     Construct air parcel array
@@ -71,16 +71,10 @@ class Particals:
             self.iy+emis.ipos[1],\
             self.iz+emis.ipos[2]
         self.ipos0=emis.ipos.copy() 
+    
     def march(self,mesh):
         """ march particals """
-        '''
-        self.ix,self.iy,self.iz,self.itramem=kernel.cpu_advection(
-            mesh.u, mesh.v, mesh.w,
-            self.ix, self.iy, self.iz, self.itramem,
-            mesh.dt,mesh.dx,
-            mesh.magic_idz,mesh.sep_z) 
-        '''
-        
+       
         (self.ix,self.iy,self.iz,
         self.dx,self.dy,self.dz,
         self.itramem)=kernel.cpu_advection(
@@ -91,18 +85,17 @@ class Particals:
             mesh.dt, mesh.dx, self.z0,
             mesh.z_c0,mesh.z_c1) 
 
+    def snapshot_pos(self, mesh):
+        """ snapshot particals position """
+        self.xlon,self.xlat=\
+            mesh.xlon[self.ix,self.iy],\
+            mesh.xlat[self.ix,self.iy]
+        self.xmeter,self.ymeter=\
+            mesh.xmeter[self.ix,self.iy],\
+            mesh.ymeter[self.ix,self.iy]
+        self.ztra1=mesh.z_c1[self.iz]
+        self.topo=mesh.topo[self.ix,self.iy]
 
-        '''
-        (self.ix,self.iy,self.iz,
-        self.dx,self.dy,self.dz,
-        self.itramem)=kernel.np_advection(
-            mesh.u, mesh.v, mesh.w,
-            self.ix, self.iy, self.iz, 
-            self.dx, self.dy, self.dz,
-            self.itramem, self.ipos0, 
-            mesh.dt, mesh.dx,
-            mesh.magic_idz,mesh.sep_z) 
-        '''
 
 if __name__ == "__main__":
     pass

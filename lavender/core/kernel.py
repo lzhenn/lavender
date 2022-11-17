@@ -1,11 +1,8 @@
 #/usr/bin/env python
 """CORE: March the Air Parcel by Lagrangian Approach"""
 
-import configparser
-import datetime, math
 import numpy as np
 import numba 
-print_prefix='core.lagrange>>'
 
 @numba.njit(parallel=True,fastmath=True)   
 def non_negflag(x):
@@ -56,7 +53,8 @@ def reloc_z(
 
 
 def cpu_advection(
-    u, v, w, pidx, pidy, pidz, pdx, pdy, pdz,
+    u, v, w, 
+    pidx, pidy, pidz, pdx, pdy, pdz,
     pt, ip0, dt, DX, z0, zc0, zc1):
     """
     March the air parcel (single) in the UVW fields
@@ -112,7 +110,8 @@ def cpu_advection(
 
 @numba.jit(nopython=True)   
 def cpu_advection_all(
-    u, v, w, pidx, pidy, pidz, pt, dt, DX, zc0, zc1):
+    u0, v0, w0, u1, v1, w1, 
+    pidx, pidy, pidz, pt, dt, DX, zc0, zc1):
     """
     March the air parcel (single) in the UVW fields
     """

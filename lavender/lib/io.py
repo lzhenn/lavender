@@ -1,6 +1,6 @@
 #/usr/bin/env python3
 """specific module for IO"""
-import datetime, struct, os, gc
+import datetime, struct, os, gc, time
 import pandas as pd
 from scipy.io import FortranFile, FortranEOFError
 
@@ -94,10 +94,10 @@ class InHandler(FileHandler):
         # lats lons on mass and staggered grids
         self.XLAT=wrf.getvar(wrf_hdl,'XLAT')
         self.XLONG=wrf.getvar(wrf_hdl,'XLONG')
-        self.XLAT_U=wrf.getvar(wrf_hdl,'XLAT_U')
-        self.XLONG_U=wrf.getvar(wrf_hdl,'XLONG_U')
-        self.XLAT_V=wrf.getvar(wrf_hdl,'XLAT_V')
-        self.XLONG_V=wrf.getvar(wrf_hdl,'XLONG_V')
+        self.sinw=wrf.getvar(wrf_hdl,'SINALPHA')
+        self.cosw=wrf.getvar(wrf_hdl,'COSALPHA')
+        self.proj=wrf.extract_global_attrs(wrf_hdl,'MAP_PROJ')['MAP_PROJ']
+
         wrf_hdl.close() 
         gc.collect()
 
@@ -154,13 +154,14 @@ class OutHandler(FileHandler):
         self.nspec=len(specs)
 
         self.construct_file_list()
-
-        
-    def write_frame(self):
+    
+    def write_frame(self, ptcls, frm):
         '''
         write partical dump file
         '''
-        pass
+        
+        utils.write_log(print_prefix+'write %s' % self.file_list[frm])
+        time.sleep(5)
 
     def load_frame(self, fn):
         '''

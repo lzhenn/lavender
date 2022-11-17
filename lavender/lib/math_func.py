@@ -1,8 +1,20 @@
 
 import numpy as np
+from . import const
 
-DEG2RAD=np.pi/180.0
+def great_cir_dis_2d(lat0, lon0, lat1, lon1):
+    """ Haversine formula to calculate great circle distance"""  
+    D2R=const.DEG2RAD
+    R=const.R_EARTH
 
+    lat0_rad, lon0_rad = lat0*D2R, lon0*D2R
+    lat1_rad, lon1_rad=lat1*D2R, lon1*D2R
+    
+    A=np.power(np.sin((lat1_rad-lat0_rad)/2),2)
+    B=np.cos(lat0_rad)*np.cos(lat1_rad)*\
+        np.power(np.sin((lon1_rad-lon0_rad)/2),2)
+
+    return 2*R*np.arcsin(np.sqrt(A+B))
 
 def wswd2uv(ws, wd):
     """ convert wind component to UV """
@@ -94,17 +106,6 @@ def get_closest_idxy(lat2d, lon2d, lat0, lon0):
     idx=np.argwhere(dis==dis.min())[0].tolist() # x, y position
     return idx[0], idx[1]
 
-def great_cir_dis_2d(lat0, lon0, lat2d, lon2d):
-    """ Haversine formula to calculate great circle distance"""  
-    R_EARTH=6371
-    
-    lat0_rad, lon0_rad = lat0*DEG2RAD, lon0*DEG2RAD
-    lat2d_rad, lon2d_rad=lat2d*DEG2RAD, lon2d*DEG2RAD
-    
-    A=np.power(np.sin((lat2d_rad-lat0_rad)/2),2)
-    B=np.cos(lat0_rad)*np.cos(lat2d_rad)*np.power(np.sin((lon2d_rad-lon0_rad)/2),2)
-
-    return 2*R_EARTH*np.arcsin(np.sqrt(A+B))
 
 def div_2d(uwnd, vwnd, dx, dy):
     """ 
@@ -119,47 +120,6 @@ def div_2d(uwnd, vwnd, dx, dy):
     div=(uwnd[:,:,1:nx+1]-uwnd[:,:,0:nx])/dx+(vwnd[:,1:ny+1,:]-vwnd[:,0:ny,:])/dy
     return div
 
-def pad_var2d(var_org, direction, dim):
-    (n_sn, n_we)=var_org.shape
-    if dim==1:
-        var=np.zeros((n_sn, n_we+1))
-        if direction=='tail':
-            var[:,0:n_we]=var_org
-            var[:,n_we]=var_org[:,n_we-1]
-        elif direction=='head':
-            var[:,1:]=var_org
-            var[:,0]=var_org[:,0]
-    else:
-        var=np.zeros((n_sn+1, n_we))
-        if direction=='tail':
-            var[0:n_sn,:]=var_org
-            var[n_sn,:]=var_org[n_sn-1,:]
-        elif direction=='head':
-            var[1:,:]=var_org
-            var[0,:]=var_org[0,:]
-
-    return var
-
-def pad_var3d(var_org, direction, dim):
-    (n_z, n_sn, n_we)=var_org.shape
-    if dim==2:
-        var=np.zeros((n_z, n_sn, n_we+1))
-        if direction=='tail':
-            var[:,:,0:n_we]=var_org
-            var[:,:,n_we]=var_org[:,:,n_we-1]
-        elif direction=='head':
-            var[:,:,1:]=var_org
-            var[:,:,0]=var_org[:,:,0]
-    else:
-        var=np.zeros((n_z, n_sn+1, n_we))
-        if direction=='tail':
-            var[:,0:n_sn,:]=var_org
-            var[:,n_sn,:]=var_org[:,n_sn-1,:]
-        elif direction=='head':
-            var[:,1:,:]=var_org
-            var[:,0,:]=var_org[:,0,:]
-
-    return var
 
 
 
