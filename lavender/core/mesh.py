@@ -42,9 +42,20 @@ class Emission:
 
         dlat=inhdl.XLAT.values[iy,ix]-self.lat
         dlon=inhdl.XLONG.values[iy,ix]-self.lon
+        # vector naming convention:
+        #   E --> Emission Pos, O --> Origin Grid, 
+        #   D --> Destination Grid, P --> Particle Pos
         # vector from emission to nearest grid center (Mass mesh) dx & dy
-        (self.EOdx,self.EOdy)=\
+        (EOdx, EOdy)=\
             dll2dxy(dlat, dlon, self.lat, self.lon, inhdl)
+        
+        n_sn, n_we = inhdl.n_sn, inhdl.n_we
+        MatX=np.broadcast_to(np.arange(0,n_we), (n_sn,n_we))
+        MatY=np.broadcast_to(np.arange(0,n_sn), (n_we, n_sn)).T
+        
+        (ODdx, ODdy)=(ix-MatX)*inhdl.dx, (iy-MatY)*inhdl.dx
+        (self.EDdx, self.EDdy) = EOdx+ODdx, EOdy+ODdy
+
 
 class Mesh:
 
@@ -70,7 +81,6 @@ class Mesh:
             self.construct_frm_mesh(inhdl, 1)
         
         self.u, self.v, self.w=self.u0, self.v0, self.w0
-        
         self.dx=inhdl.dx
 
     def construct_frm_mesh(self, inhdl, frm):
@@ -81,13 +91,13 @@ class Mesh:
         inhdl.load_frame(frm)    
         f = interpolate.interp1d(
             inhdl.z.values, inhdl.U.values, axis=0,fill_value='extrapolate')
-        u = f(self.z)
+        u = f(self.z).astype(np.float32)
         f = interpolate.interp1d(
             inhdl.z.values, inhdl.V.values, axis=0,fill_value='extrapolate')
-        v = f(self.z)
+        v = f(self.z).astype(np.float32)
         f = interpolate.interp1d(
             inhdl.z_stag.values, inhdl.W.values, axis=0,fill_value='extrapolate')
-        w = f(self.z)
+        w = f(self.z).astype(np.float32)
         return u,v,w
 
     def update_wind(self, iofrm, iofrac):
@@ -105,13 +115,14 @@ def dxy2dll(dx, dy, lat0, lon0, inhdl):
     convert dx, dy to dlat, dlon
     '''
     if inhdl.proj==1:
+        # lambert projection
         iy,ix=math_func.get_closest_idxy(
             inhdl.XLAT.values, inhdl.XLONG.values, lat0, lon0)
         sinw,cosw=inhdl.sinw[iy,ix].values, inhdl.cosw[iy,ix].values
         
         # rotate coordinate 
         dwe=dx*cosw-dy*sinw
-        dsn=dy*cosw+dx*sinw
+        dsn=dx*sinw+dy*cosw
         
         dlat=dsn/RE*R2D
         dlon=R2D*dwe/(np.cos(lat0*D2R)*RE)

@@ -1,6 +1,20 @@
 
 import numpy as np
+import numba as nb
 from . import const
+
+@nb.jit(nb.i4[:](nb.float32[:], nb.int64, nb.i4[:]),nopython=True)
+def roundI4(x, decimals, out):
+    return np.round_(x, decimals, out)
+
+@nb.njit(nb.b1[:](nb.f4[:],),parallel=True,fastmath=True)   
+def non_negflag(x):
+    '''
+    super optimized function to 
+    return the non-negative flag of x
+    val = (x>=0: 1, x<0: 0)
+    '''
+    return np.logical_not(np.signbit(x))
 
 def great_cir_dis_2d(lat0, lon0, lat1, lon1):
     """ Haversine formula to calculate great circle distance"""  

@@ -2,25 +2,32 @@
 """CORE: March the Air Parcel by Lagrangian Approach"""
 
 import numpy as np
-import numba 
+import numba as nb 
+from ..lib import const, math_func
 
-@numba.njit(parallel=True,fastmath=True)   
-def non_negflag(x):
-    '''
-    super optimized function to 
-    return the non-negative flag of x
-    val = (x>=0: 1, x<0: 0)
-    '''
-    return np.logical_not(np.signbit(x))
+# CONSTS
+R2D=const.RAD2DEG
+D2R=const.DEG2RAD
+RE=const.R_EARTH
+C1=1.0/RE*R2D
+C2=R2D/RE
 
-@numba.njit(parallel=True,fastmath=True)   
+
+
+
+@nb.njit(
+    nb.f4[:](
+        nb.f4[:,:,:], nb.f4[:], nb.i4[:], nb.i4[:], nb.i4[:], nb.f4, nb.b1[:]),
+    parallel=True,fastmath=True)   
 def adv(
     v, s, idx, idy, idz, dt, eflag):
-    for i in numba.prange(eflag.shape[0]):
+    for i in nb.prange(eflag.shape[0]):
         s[i]=s[i]+eflag[i]*v[idz[i],idy[i],idx[i]]*dt
     return s
 
-@numba.njit(parallel=True,fastmath=True)
+@nb.njit(
+    nb.i4[:](nb.i4[:], nb.f4, nb.f4, nb.f4[:], nb.f4),
+    parallel=True,fastmath=True)
 def reloc_xy(
     mat_idx, org, upbnd, dp, rDX):
     '''
@@ -29,16 +36,15 @@ def reloc_xy(
     org: original position
     rDX: 1/DX
     '''
-    #for i in numba.prange(mat_idx.shape[0]):
-    mat_idx=org+(dp*rDX)
-    mat_idx=non_negflag(mat_idx)*mat_idx 
-    mat_idx=mat_idx+non_negflag(mat_idx-upbnd)*(upbnd-mat_idx)
-    #mat_idx=np.where(mat_idx>=upbnd,-1.0,mat_idx)
-    return mat_idx
+    idx=org+(dp*rDX)
+    idx=math_func.non_negflag(idx)*idx 
+    idx=idx+math_func.non_negflag(idx-upbnd)*(upbnd-idx)
+    return math_func.roundI4(idx,0,mat_idx)
 
-@numba.njit(parallel=True,fastmath=True)
-def reloc_z(
-    mat_idz, z0, upbnd, dp, c0, rc0, lnc1):
+@nb.njit(
+    nb.i4[:](nb.i4[:], nb.f4, nb.f4, nb.f4[:], nb.f4, nb.f4, nb.f4),
+    parallel=True,fastmath=True)
+def reloc_z(mat_idz, z0, upbnd, dp, c0, rc0, lnc1):
     '''
     upbnd: upper bound of the index
     dp: displacement
@@ -46,11 +52,37 @@ def reloc_z(
     rDX: 1/DX
     '''
     #for i in numba.prange(mat_idx.shape[0]):
-    mat_idz=(np.log(non_negflag(z0+dp)*(z0+dp)+c0)*rc0)*lnc1
-    mat_idz=mat_idz+non_negflag(mat_idz-upbnd)*(upbnd-mat_idz)
-    #mat_idz=np.where(mat_idz>=upbnd,-1.0,mat_idz)
-    return mat_idz
+    idz=(np.log((math_func.non_negflag(z0+dp)*(z0+dp)+c0)*rc0))*lnc1
+    idz=idz+math_func.non_negflag(idz-upbnd)*(upbnd-idz)
+    return math_func.roundI4(idz, 0, mat_idz)
 
+@nb.njit(parallel=True,fastmath=True)
+def cpu_lambert_pos(
+    ix, iy, dx, dy, sinw, cosw,
+    EDdx, EDdy, xlat, xlon):
+    '''
+        ix,iy,iz: index of pos for ptcls in 1D
+        dx,dy,dz: displacement of ptcls in 1D
+        EDdx, EDdy: ED vectors of mesh 2D
+        xlat,xlon: lat/lon of mesh 2D 
+    '''
+    
+    plat,plon=np.zeros(ix.shape[0]),np.zeros(ix.shape[0])
+    
+    for i in nb.prange(ix.shape[0]):
+        
+        sinw0,cosw0=sinw[iy[i],ix[i]],cosw[iy[i],ix[i]]
+        Dlat,Dlon=xlat[iy[i],ix[i]],xlon[iy[i],ix[i]]
+
+        DPx=dx[i]-EDdx[iy[i],ix[i]]
+        DPy=dy[i]-EDdy[iy[i],ix[i]]
+        # rotate coordinate 
+        dwe=DPx*cosw0-DPy*sinw0
+        dsn=DPx*sinw0+DPy*cosw0
+        # update lat/lon
+        plat[i]=Dlat+dsn*C1
+        plon[i]=Dlon+C2*dwe/(np.cos(Dlat*D2R))
+    return plat, plon
 
 def cpu_advection(
     u, v, w, 
@@ -66,8 +98,9 @@ def cpu_advection(
 
     # update position
     pt=pt+dt
+    
     # whether the parcel is emitted
-    emit_flag=non_negflag(pt)
+    emit_flag=math_func.non_negflag(pt)
 
     # calculate the displacement
     pdx=adv(u, pdx, pidx, pidy, pidz, dt, emit_flag)
@@ -75,17 +108,10 @@ def cpu_advection(
     pdz=adv(w, pdz, pidx, pidy, pidz, dt, emit_flag)
     
     # update position
-    pidz=pidz.astype(float)
+    #temp=np.empty_like(pidx, order='C')
     pidz=reloc_z(pidz, z0, nz, pdz, zc0, rc0, rlnc1)
-    pidz=pidz.astype(int)
-
-    pidx=pidx.astype(float)
-    pidx=reloc_xy(pidx, ip0[0], nx, pdx, rDX)
-    pidx=pidx.astype(int)
-    
-    pidy=pidy.astype(float)
     pidy=reloc_xy(pidy, ip0[1], ny, pdy, rDX)
-    pidy=pidy.astype(int)
+    pidx=reloc_xy(pidx, ip0[0], nx, pdx, rDX)
     
     #Need optimization here (60-70% of the span)
     '''
@@ -106,57 +132,6 @@ def cpu_advection(
     '''    
     return pidx, pidy, pidz, pdx, pdy, pdz, pt
     
-    
-
-@numba.jit(nopython=True)   
-def cpu_advection_all(
-    u0, v0, w0, u1, v1, w1, 
-    pidx, pidy, pidz, pt, dt, DX, zc0, zc1):
-    """
-    March the air parcel (single) in the UVW fields
-    """
-    # update position
-    pt=pt+dt
-    # whether the parcel is emitted
-    emit_flag=np.sign(np.sign(pt)+1)
-    
-    # calculate the displacement
-    ''' distributed loop '''
-    for i in range(len(pidx)):
-        idx0,idy0,idz0=pidx[i],pidy[i],pidz[i]
-        dx=emit_flag[i]*u[idx0, idy0, idz0]*dt
-        
-    for i in range(len(pidx)):
-        idx0,idy0,idz0=pidx[i],pidy[i],pidz[i]
-        dy=emit_flag[i]*v[idx0, idy0, idz0]*dt
-    
-    for i in range(len(pidx)):
-        idx0,idy0,idz0=pidx[i],pidy[i],pidz[i]
-        dz=emit_flag[i]*w[idx0, idy0, idz0]*dt
-        # update position
-        
-    for i in range(len(pidx)):
-        pidx[i]=pidx[i]+np.round(dx/DX)
-    for i in range(len(pidx)):
-        pidy[i]=pidy[i]+np.round(dy/DX)
-    for i in range(len(pidx)):
-        pidz[i]=pidz[i]+np.round(dz/sep_zs[0])
-    
-    
-    ''' ordinary implementation 
-    for i in range(len(pidx)):
-        idx0,idy0,idz0=pidx[i],pidy[i],pidz[i]
-        dx=emit_flag[i]*u[idx0, idy0, idz0]*dt
-        dy=emit_flag[i]*v[idx0, idy0, idz0]*dt
-        dz=emit_flag[i]*w[idx0, idy0, idz0]*dt
-        # update position
-        pidx[i]=pidx[i]+np.round(dx/DX)
-        pidy[i]=pidy[i]+np.round(dy/DX)
-        pidz[i]=pidz[i]+np.round(dz/sep_zs[0])
-    ''' 
-
-    return pidx, pidy, pidz, pt
-
 
 def np_advection(
     u, v, w, pidx, pidy, pidz, pdx, pdy, pdz,

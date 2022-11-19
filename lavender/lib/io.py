@@ -4,7 +4,7 @@ import datetime, struct, os, gc, time
 import pandas as pd
 from scipy.io import FortranFile, FortranEOFError
 
-from ..core import particals
+from ..core import particles
 from . import utils, const, cfgparser
 
 import netCDF4 as nc4
@@ -32,7 +32,7 @@ class FileHandler():
             utils.throw_error(
                 print_prefix+'''cannot generate time frames,
                 check init_t, end_t, and output_frq in config file''')
-        self.tfrms=time_frms 
+        self.tfrms=time_frms[1:] # ignore the first frame (no emission) 
         self.file_list=[]
         for ts in time_frms:
             self.file_list.append(
@@ -203,7 +203,7 @@ class OutHandler(FileHandler):
         (itime, nparts, iomode_xycoord)=struct.unpack('III', rec)
         
         # construct partical array
-        prtarray=particals.Particals(nptcls=nparts, nspec=self.nspec)
+        prtarray=particles.Particles(nptcls=nparts, nspec=self.nspec)
 
         # id, rec_slab, and species
         len_slab_flag=str(

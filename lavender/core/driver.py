@@ -2,7 +2,7 @@
 """CORE: March the Air Parcel by Lagrangian Approach"""
 import datetime, time
 from ..lib import io, cfgparser, utils, const
-from . import mesh, particals
+from . import mesh, particles
 
 print_prefix='core.driver>>'
 
@@ -50,36 +50,44 @@ class Driver:
 
         starttime=time.time()
         # init from frm 1 as 0 all ptlcs are in emission pos
-        outfrm=1
         utils.write_log(
             print_prefix+'t=%s start Lagrangian kernel...'% self.tmgr.curr_t)
         
         while self.tmgr.curr_t < self.tmgr.end_t:    
-            
+            utils.write_log(
+                '%smarch @ %s' % (print_prefix, self.tmgr.curr_t))
             self.ptcls.march(self.mesh)
             if self.debug:
                 self.debuginfo()
             self.tmgr.advance()
             # output frame
             if self.tmgr.curr_t in self.outfhdl.tfrms:
-                self.outfhdl.write_frame(self.ptcls, outfrm)
-                outfrm+=1
+                utils.write_log(
+                    '%sparticle dump @ %s' % (print_prefix, self.tmgr.curr_t))
+                self.ptcls.snapshot_pos(self.emission, self.infhdl)
  
             self.mesh.update_wind(
                 self.tmgr.iofrm, self.tmgr.iofrac)
         
         endtime=time.time()
-        utils.write_log(print_prefix+'advection finished in %f s' % (endtime-starttime))
-        utils.write_log(print_prefix+'model driver finished!')
+        utils.write_log(
+            print_prefix+'advection finished in %f s' % (endtime-starttime))
+        utils.write_log(print_prefix+'model driver completed!')
     
     def debuginfo(self):
         iz,iy,ix=self.ptcls.iz[-1],self.ptcls.iy[-1],self.ptcls.ix[-1]
+        dx,dy,dz=self.ptcls.dx[-1],self.ptcls.dy[-1],self.ptcls.dz[-1]
         it=self.ptcls.itramem[-1] 
-        dz=self.ptcls.dz[-1]
-        utils.write_log(print_prefix+'ptcl0[iz,iy,ix]=(%04d,%04d,%04d),it=%10.1f,dz=%10.1f' % ( 
-            iz,iy,ix,it,dz),lvl=10)
+        
+        utils.write_log('%sptcl0[iz,iy,ix]=(%04d,%04d,%04d),it=%10.1f' % (
+            print_prefix,iz,iy,ix,it),lvl=10)
+            
+        utils.write_log('%sdz=%10.1f,dx=%10.1f,dy=%10.1f' % ( 
+            print_prefix,dz,dx,dy),lvl=10)
+        
         utils.write_log(print_prefix+'u=%4.1f,v=%4.1f,w=%8.7f' % (
-            self.mesh.u[iz,iy,ix],self.mesh.v[iz,iy,ix],self.mesh.w[iz,iy,ix]),lvl=10)
+            self.mesh.u[iz,iy,ix],self.mesh.v[iz,iy,ix],self.mesh.w[iz,iy,ix]),
+            lvl=10)
 
 class TimeManager():
     '''
@@ -108,11 +116,11 @@ class TimeManager():
         
         if self.dt>const.MAX_DT:
             self.dt=const.MAX_DT
-
+        self.dt=float(self.dt)
         res=iodt % self.dt
         if res>0:
             utils.throw_error(
-                '%s[INPUT][feed_frq]=%ds is not a multiple of [RUNTIME][dt]=%ds'\
+                '%s[INPUT][feed_frq]=%d is not a multiple of [RUNTIME][dt]=%d'\
                 % (print_prefix, iodt, self.dt))
 
         utils.write_log(print_prefix+'dyn dt=%5.1f'%self.dt)

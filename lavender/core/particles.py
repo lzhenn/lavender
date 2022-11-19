@@ -61,10 +61,11 @@ class Particles:
         utils.write_log(
             print_prefix+'array with %d particals initiated!' % nptcls)
 
-
     def update(self, emis):
-        """ update partical array by emission """ 
-        self.itramem=np.linspace(-emis.emis_span,0,self.nptcls)  
+        """ update particle array by emission """ 
+        self.itramem=np.linspace(
+            -emis.emis_span,0,self.nptcls,dtype=np.float32)  
+        self.emis_span=emis.emis_span
         self.z0=emis.height
         self.ix, self.iy, self.iz=\
             self.ix+emis.ipos[0],\
@@ -73,8 +74,7 @@ class Particles:
         self.ipos0=emis.ipos.copy() 
     
     def march(self,mesh):
-        """ march particals """
-       
+        """ march particles """
         (self.ix,self.iy,self.iz,
         self.dx,self.dy,self.dz,
         self.itramem)=kernel.cpu_advection(
@@ -85,16 +85,23 @@ class Particles:
             mesh.dt, mesh.dx, self.z0,
             mesh.z_c0,mesh.z_c1) 
 
-    def snapshot_pos(self, mesh):
-        """ snapshot particals position """
-        self.xlon,self.xlat=\
-            mesh.xlon[self.ix,self.iy],\
-            mesh.xlat[self.ix,self.iy]
-        self.xmeter,self.ymeter=\
-            mesh.xmeter[self.ix,self.iy],\
-            mesh.ymeter[self.ix,self.iy]
-        self.ztra1=mesh.z_c1[self.iz]
-        self.topo=mesh.topo[self.ix,self.iy]
+    def snapshot_pos(self, emis, inhdl):
+        """ snapshot particles position """
+        ndt=self.itramem[-1]
+        # np number of active particles
+        np=int(self.nptcls*ndt/self.emis_span)
+        
+        pz=self.z0+self.dz[-np:]
+        if inhdl.proj==1:
+            plat,plon=kernel.cpu_lambert_pos(
+                self.ix[-np:], self.iy[-np:],
+                self.dx[-np:], self.dy[-np:],
+                inhdl.sinw.values, inhdl.cosw.values,
+                emis.EDdx, emis.EDdy,
+                inhdl.XLAT.values, inhdl.XLONG.values) 
+        else:
+            utils.throw_error(print_prefix+'projection not supported yet!')
+        return pz, plat, plon
 
 
 if __name__ == "__main__":
