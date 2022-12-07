@@ -17,26 +17,44 @@ C2=R2D/RE
 
 @nb.njit(
     nb.f4[:](
-        nb.f4[:,:,:], nb.f4[:], nb.i4[:], nb.i4[:], nb.i4[:], nb.f4, nb.b1[:]),
+        nb.f4[:], nb.f4[:], nb.f4, nb.f4, nb.f4, nb.b1[:],
+        nb.f4[:], nb.b1[:]),
     parallel=True,fastmath=True)   
-def adv(
-    v, s, idx, idy, idz, dt, eflag):
-    for i in nb.prange(eflag.shape[0]):
-        s[i]=s[i]+eflag[i]*v[idz[i],idy[i],idx[i]]*dt
+
+def adv_z(
+        pv, s, dt, np, z0, dflag, pt, eflag):
+    s[-np:]=s[-np:]+dflag[-np:]*pv*dt
+    s[-np:]=s[-np:]+eflag[-np:]*pv*pt[-np:]
+    s[-np:]=math_func.non_negflag(z0+s[-np:])*s[-np:]
     return s
 
 @nb.njit(
-    nb.i4[:](nb.i4[:], nb.f4, nb.f4, nb.f4[:], nb.f4),
+    nb.f4[:](
+        nb.f4[:], nb.f4[:], nb.f4, nb.f4, nb.b1[:],
+        nb.f4[:], nb.b1[:]),
+    parallel=True,fastmath=True)   
+
+def adv(
+        pv, s, dt, np, dflag, pt, eflag):
+    s[-np:]=s[-np:]+dflag[-np:]*pv*dt
+    s[-np:]=s[-np:]+eflag[-np:]*pv*pt[-np:]
+    return s
+
+
+
+@nb.njit(
+    nb.i4[:](nb.i4[:], nb.f4, nb.f4, nb.f4, nb.f4[:], nb.f4),
     parallel=True,fastmath=True)
 def reloc_xy(
-    mat_idx, org, upbnd, dp, rDX):
+    mat_idx, org, EOdx, upbnd, dp, rDX):
     '''
     upbnd: upper bound of the index
+    org: original position [idx]
+    EOdp: EO vector (Emission --> Origin)
     dp: displacement
-    org: original position
     rDX: 1/DX
     '''
-    idx=org+(dp*rDX)
+    idx=org+((dp-EOdx)*rDX)
     idx=math_func.non_negflag(idx)*idx 
     idx=idx+math_func.non_negflag(idx-upbnd)*(upbnd-idx)
     return math_func.roundI4(idx,0,mat_idx)
@@ -48,11 +66,11 @@ def reloc_z(mat_idz, z0, upbnd, dp, c0, rc0, lnc1):
     '''
     upbnd: upper bound of the index
     dp: displacement
-    org: original position
+    z0: original position
     rDX: 1/DX
     '''
     #for i in numba.prange(mat_idx.shape[0]):
-    idz=(np.log((math_func.non_negflag(z0+dp)*(z0+dp)+c0)*rc0))*lnc1
+    idz=(np.log(((z0+dp)+c0)*rc0))*lnc1
     idz=idz+math_func.non_negflag(idz-upbnd)*(upbnd-idz)
     return math_func.roundI4(idz, 0, mat_idz)
 
@@ -61,57 +79,142 @@ def cpu_lambert_pos(
     ix, iy, dx, dy, sinw, cosw,
     EDdx, EDdy, xlat, xlon):
     '''
-        ix,iy,iz: index of pos for ptcls in 1D
-        dx,dy,dz: displacement of ptcls in 1D
+        ix,iy: index of pos for ptcls in 1D
+        dx,dy: displacement of ptcls in 1D
         EDdx, EDdy: ED vectors of mesh 2D
         xlat,xlon: lat/lon of mesh 2D 
     '''
-    
-    plat,plon=np.zeros(ix.shape[0]),np.zeros(ix.shape[0])
-    
-    for i in nb.prange(ix.shape[0]):
-        
-        sinw0,cosw0=sinw[iy[i],ix[i]],cosw[iy[i],ix[i]]
-        Dlat,Dlon=xlat[iy[i],ix[i]],xlon[iy[i],ix[i]]
+    napt=ix.shape[0] 
+    DPx,DPy=np.zeros(napt),np.zeros(napt)
+    dwe,dsn=np.zeros(napt),np.zeros(napt)
+    plat,plon=np.zeros(napt),np.zeros(napt)
+    for i in nb.prange(napt):
+        py,px= iy[i],ix[i]
+        sinw0,cosw0=sinw[py,px],cosw[py,px]
+        Dlat,Dlon=xlat[py,px],xlon[py,px]
 
-        DPx=dx[i]-EDdx[iy[i],ix[i]]
-        DPy=dy[i]-EDdy[iy[i],ix[i]]
+        DPx[i]=dx[i]-EDdx[py,px]
+        DPy[i]=dy[i]-EDdy[py,px]
         # rotate coordinate 
-        dwe=DPx*cosw0-DPy*sinw0
-        dsn=DPx*sinw0+DPy*cosw0
+        dwe[i]=DPx[i]*cosw0-DPy[i]*sinw0
+        dsn[i]=DPx[i]*sinw0+DPy[i]*cosw0
         # update lat/lon
-        plat[i]=Dlat+dsn*C1
-        plon[i]=Dlon+C2*dwe/(np.cos(Dlat*D2R))
+        plat[i]=Dlat+dsn[i]*C1
+        plon[i]=Dlon+C2*dwe[i]/(np.cos(Dlat*D2R))
     return plat, plon
 
+@nb.njit(parallel=True,fastmath=True)
+def get_vel(v, pv, idx, idy, idz, napt):
+    '''
+    get velocity of the parcel at the position [idx,idy,idz]
+    of the particle
+    '''
+    for i in nb.prange(napt):
+        # id of active particles
+        id=-napt+i
+        iz,iy,ix=idz[id],idy[id],idx[id]
+        pv[i]=v[iz,iy,ix]
+
+    return pv
+
+@nb.njit(parallel=True,fastmath=True)
+def cal_zoter(pz, ter, idx, idy, napt):
+    for i in nb.prange(napt):
+        # id of active particles
+        iy,ix=idy[i],idx[i]
+        pz[i]=ter[iy,ix]+pz[i]
+    return pz
+ 
+@nb.njit(parallel=True,fastmath=True)
+def turb_xy(v, pv, dv, idx, idy, idz, dt, napt, sigv, tauv):
+    '''
+    calculate turbulence effect on velocity
+    du, dv
+    '''
+    np.random.seed(0)
+    r=np.random.normal(0.0, 1.0, napt)
+    for i in nb.prange(napt):
+        # id of active particles
+        id=-napt+i
+        iz,iy,ix=idz[id],idy[id],idx[id]
+        sgv=sigv[iz,iy,ix]
+        tuv=tauv[iz,iy,ix]
+        pv[i]=v[iz,iy,ix]
+        dv[id]=pv[i]*r[i]
+
+    pv=pv+dv[-napt:]
+    return pv
+
+@nb.njit(parallel=True,fastmath=True)
+def turb_z(w, pw, dw, idx, idy, idz, dt, napt, sigw, tauw):
+    '''
+    calculate turbulence effect on velocity
+    dw
+    '''
+    np.random.seed(0)
+    r=np.random.normal(0.0, 1.0, napt)
+    for i in nb.prange(napt):
+        # id of active particles
+        id=-napt+i
+        iz,iy,ix=idz[id],idy[id],idx[id]
+        sgw=sigw[iz,iy,ix]
+        tuw=tauw[iz,iy,ix]
+        pw[i]=w[iz,iy,ix]
+        dw[id]=pw[i]*r[i]
+
+    pw=pw+dw[-napt:]
+    return pw
+
+
+
 def cpu_advection(
-    u, v, w, 
+    u, v, w, du, dv, dw, napt,
     pidx, pidy, pidz, pdx, pdy, pdz,
-    pt, ip0, dt, DX, z0, zc0, zc1):
+    pt, ix0, iy0, EOx, EOy, dt, DX, z0, zc0, zc1, **kw):
     """
     March the air parcel (single) in the UVW fields
+    napt : number of active particles8
     """
     rDX=1.0/DX
     rc0=1.0/zc0
     rlnc1=1.0/np.log(zc1)
     nz,ny,nx=w.shape
 
-    # update position
+    drift_flag=math_func.non_negflag(pt)
     pt=pt+dt
+    # whether the particle is just emitted
+    emit_flag=np.bitwise_xor(math_func.non_negflag(pt), drift_flag)
+    # np number of active particles
+    napt=np.sum(drift_flag)+np.sum(emit_flag)
     
-    # whether the parcel is emitted
-    emit_flag=math_func.non_negflag(pt)
+    pu,pv,pw=\
+        np.zeros(napt).astype(np.float32),\
+        np.zeros(napt).astype(np.float32),\
+        np.zeros(napt).astype(np.float32)
+    if kw =={}: 
+        pu=get_vel(u, pu, pidx, pidy, pidz, napt)
+        pv=get_vel(v, pv, pidx, pidy, pidz, napt)
+        pw=get_vel(w, pw, pidx, pidy, pidz, napt)
+    else:
+        # turbulence
+        pu =turb_xy(
+            u, pu, du, pidx, pidy, pidz, dt, napt, kw['sigu'], kw['tauu'])
+        pv=turb_xy(
+            v, pv, dv, pidx, pidy, pidz, dt, napt, kw['sigv'], kw['tauv'])
+        #pw=get_vel(w, pw, pidx, pidy, pidz, napt)
+        pw=turb_z(
+            w, pw, dw, pidx, pidy, pidz, dt, napt, kw['sigw'], kw['tauw'])
+        
 
     # calculate the displacement
-    pdx=adv(u, pdx, pidx, pidy, pidz, dt, emit_flag)
-    pdy=adv(v, pdy, pidx, pidy, pidz, dt, emit_flag)
-    pdz=adv(w, pdz, pidx, pidy, pidz, dt, emit_flag)
-    
+    pdx=adv(pu, pdx, dt, napt, drift_flag, pt, emit_flag)
+    pdy=adv(pv, pdy, dt, napt, drift_flag, pt, emit_flag)
+    pdz=adv_z(pw, pdz, dt, napt, drift_flag, pt, emit_flag)
     # update position
     #temp=np.empty_like(pidx, order='C')
     pidz=reloc_z(pidz, z0, nz, pdz, zc0, rc0, rlnc1)
-    pidy=reloc_xy(pidy, ip0[1], ny, pdy, rDX)
-    pidx=reloc_xy(pidx, ip0[0], nx, pdx, rDX)
+    pidy=reloc_xy(pidy, iy0, EOy, ny, pdy, rDX)
+    pidx=reloc_xy(pidx, ix0, EOx, nx, pdx, rDX)
     
     #Need optimization here (60-70% of the span)
     '''
@@ -130,7 +233,7 @@ def cpu_advection(
     pidz=np.where(pidz>=nz,nz-1,pidz)
     pidz=pidz.astype(int)
     '''    
-    return pidx, pidy, pidz, pdx, pdy, pdz, pt
+    return pidx, pidy, pidz, pdx, pdy, pdz, pt, napt
     
 
 def np_advection(

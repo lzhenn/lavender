@@ -39,9 +39,9 @@ def render3d(cfg,MWD):
     topo=topo.sel(y=slice(latS,latN), x=slice(lonW,lonE))
     topo_lat,topo_lon,topo_z=topo['y'], topo['x'], topo['z']
     ny=topo_lat.shape[0]
-
+    
     # subsampling
-    max_ny=400   
+    max_ny=100
     if ny>max_ny:
         zoom_r=int(np.floor(ny/max_ny))+1
         topo_lat=topo_lat[::zoom_r]
@@ -51,7 +51,6 @@ def render3d(cfg,MWD):
     
     dx = np.diff(topo_lon[1,1:3])
     dy = np.diff(topo_lat[1:3,1])
-    
     # get partical dump data
     file_hdler=io.OutHandler(cfg)
     
@@ -93,7 +92,7 @@ def __mtsk_render3d(
             continue
         
         utils.write_log(
-            '%sTASK[%04d]: subtask (%04d/%04d) rendering %s with npart=%d' % (
+            '%sTASK[%04d]: subtask (%04d/%04d) rendering %s with nptcl=%d' % (
                 print_prefix, itsk, subid+1, len_seg, ts, prtarray.nptcls))
         
         plon,plat,pz=prtarray.xlon, prtarray.xlat, prtarray.ztra1
@@ -150,10 +149,11 @@ def __mtsk_render3d(
         plt.title(
             'AirTracers %s' % fh.tfrms[gidx].strftime(const.YMDHM),
             fontsize=const.MIDFONT)
-        figpath=os.path.join(const.CWD,'fig/airp.%s.png')
-        plt.savefig(
-            figpath % fh.tfrms[gidx].strftime(const.YMDHM), 
-            dpi=150)
+                
+        figpath=os.path.join(
+            const.CWD, 
+            utils.parse_tswildcard(fh.tfrms[gidx], fh.fig_wildcard))
+        plt.savefig(figpath, dpi=150)
         plt.close('all')
         utils.write_log(
             '%sTASK[%04d]: subtask (%04d/%04d) render3D done!' % (

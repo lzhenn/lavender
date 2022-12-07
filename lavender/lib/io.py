@@ -8,6 +8,7 @@ from ..core import particles
 from . import utils, const, cfgparser
 
 import netCDF4 as nc4
+import xarray as xr
 import wrf 
 
 print_prefix='lib.io>>'
@@ -48,7 +49,7 @@ class InHandler(FileHandler):
         utils.write_log(print_prefix+'construct InFileHandler')
         FileHandler.__init__(
             self, cfg['INPUT']['init_t'], cfg['INPUT']['end_t'])
-
+        self.cfg=cfg
         self.wrf_root=utils.parse_tswildcard(
             self.strt_time, cfg['INPUT']['wrfout_path'])
         self.file_wildcard=cfg['INPUT']['wrfout_wildcard']
@@ -82,12 +83,11 @@ class InHandler(FileHandler):
         abz3d=wrf.getvar(wrf_hdl,'z') # model layer elevation above sea level
         abz3d_stag=wrf.getvar(wrf_hdl,'zstag') # model layer elevation above sea level
         ter=wrf.getvar(wrf_hdl,'ter') # terrain height  
-
+        self.ter=ter 
         # model layer elevation above terrain
         #self.z=self.z-ter.mean(['south_north','west_east'])
         self.z=(abz3d-ter).mean(['south_north','west_east'])
         self.z_stag=(abz3d_stag-ter).mean(['south_north','west_east'])
-
         # get index of z for near surface layer and free atm 
         (self.n_sn, self.n_we)=ter.shape # on mass grid
         
@@ -110,16 +110,26 @@ class InHandler(FileHandler):
         fn_full=os.path.join(self.wrf_root, fn)
         wrf_hdl=nc4.Dataset(fn_full)
  
-        # template UVW
+        # full layer data 
         self.U = wrf.getvar(wrf_hdl, 'U')
         self.V = wrf.getvar(wrf_hdl, 'V')
         self.W = wrf.getvar(wrf_hdl, 'W')
-        self.T = wrf.getvar(wrf_hdl, 'T')
-        self.p = wrf.getvar(wrf_hdl, 'pres') # Full Model Pressure in Pa
-        # template UV10 and T2
+        self.PT = wrf.getvar(wrf_hdl, 'theta', units='K')
+        self.VT = wrf.getvar(wrf_hdl, 'tv', units='K')
+        #self.p = wrf.getvar(wrf_hdl, 'pres') # Full Model Pressure in Pa
+
+        # Single layer data
+        self.PBLH = wrf.getvar(wrf_hdl, 'PBLH')
+        self.PS=wrf.getvar(wrf_hdl, 'PSFC')
+        self.T2 = wrf.getvar(wrf_hdl, 'T2')
+        self.TD2= wrf.getvar(wrf_hdl, 'td2',units='K')
+        self.UST = wrf.getvar(wrf_hdl, 'UST')
+        self.HFX = wrf.getvar(wrf_hdl, 'HFX')
         self.U10 = wrf.getvar(wrf_hdl, 'U10')
         self.V10 = wrf.getvar(wrf_hdl, 'V10')
-        self.T2 = wrf.getvar(wrf_hdl, 'T2')
+        # Coriolis parameter
+        self.F = wrf.getvar(wrf_hdl, 'F')
+        
         wrf_hdl.close() 
         gc.collect()
 
@@ -150,22 +160,30 @@ class OutHandler(FileHandler):
         self.path=cfg['OUTPUT']['file_root']
         self.file_wildcard=cfg['OUTPUT']['file_wildcard']
         self.frq=cfg['OUTPUT']['output_frq']
+        
+        self.fig_wildcard=cfg['postprocess']['fig_wildcard']
+        self.fig_fmt=cfg['postprocess']['fig_fmt']
+        
         specs=cfgparser.cfg_get_varlist(cfg, 'EMISSION', 'specs')
         self.nspec=len(specs)
 
         self.construct_file_list()
     
-    def write_frame(self, ptcls, frm):
+    def write_frame(self, ds, frm):
         '''
         write partical dump file
         '''
         
         utils.write_log(print_prefix+'write %s' % self.file_list[frm])
-        time.sleep(5)
+
+        out_fn= os.path.join(self.path, self.file_list[frm])
+        ds.to_netcdf(out_fn, engine='h5netcdf')
+
+
 
     def load_frame(self, fn):
         '''
-        load data according to single file 
+        load particle dump data according to single file 
         '''
         fn_full=os.path.join(self.path, fn)
         
@@ -186,7 +204,29 @@ class OutHandler(FileHandler):
         utils.write_log(
             print_prefix+'%s loaded successfully!' % fn_full)
         return prtarray
-    
+
+    def __load_nc(self, fn): 
+        '''
+        load particle dump data according to single file 
+        '''
+       
+        ds=xr.open_dataset(fn)
+        nptcls=len(ds['parcel_id'])
+        
+        # construct partical array
+        prtarray=particles.Particles(nptcls=nptcls, nspec=self.nspec)
+
+        prtarray.xlon=ds['xlon'].values
+        prtarray.xlat=ds['xlat'].values
+        prtarray.ztra1=ds['xh'].values
+        prtarray.itramem=ds['xtime'].values
+
+        ds.close()
+
+        return prtarray
+
+
+
     def __load_flexpart(self, fn):
         '''
         load flexpart format partical dump file
@@ -220,4 +260,21 @@ class OutHandler(FileHandler):
         
         return prtarray
 
-   
+def acc_ptcl_dump_ds(idx, xlat, xlon, xh, xtime, glb_time):
+    '''
+    accumulate partical dump data into xarray dataset
+    '''
+    ds = xr.Dataset(
+        {
+            'xlat':(['parcel_id'], xlat),
+            'xlon':(['parcel_id'], xlon),
+            'xh':(['parcel_id'], xh),
+            'xtime':(['parcel_id'], xtime),
+        },
+        coords={
+            'time':glb_time,
+            'parcel_id':idx,
+        },
+    )
+    return ds
+

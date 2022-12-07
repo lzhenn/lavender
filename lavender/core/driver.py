@@ -4,8 +4,8 @@ import datetime, time
 from ..lib import io, cfgparser, utils, const
 from . import mesh, particles
 
-print_prefix='core.driver>>'
 
+print_prefix='core.driver>>'
 
 class Driver:
 
@@ -39,6 +39,8 @@ class Driver:
 
         # init timemanager
         self.tmgr=TimeManager(cfg, self.mesh, self.infhdl)
+        self.mesh.dt=self.tmgr.dt
+        self.mesh.cal_turb_paras()
 
         self.debug=cfg['RUNTIME'].getboolean('debug')
         utils.write_log(print_prefix+'model driver initiated!')
@@ -49,24 +51,41 @@ class Driver:
         '''
 
         starttime=time.time()
-        # init from frm 1 as 0 all ptlcs are in emission pos
         utils.write_log(
             print_prefix+'t=%s start Lagrangian kernel...'% self.tmgr.curr_t)
+
+
         
+        
+        # --------------------------integral loop--------------------------------
+        #while self.tmgr.curr_t < datetime.datetime(2018,9,15,12,10,0):
         while self.tmgr.curr_t < self.tmgr.end_t:    
             utils.write_log(
                 '%smarch @ %s' % (print_prefix, self.tmgr.curr_t))
+
+            # march the particles   
             self.ptcls.march(self.mesh)
             if self.debug:
                 self.debuginfo()
             self.tmgr.advance()
+            
             # output frame
-            if self.tmgr.curr_t in self.outfhdl.tfrms:
+            if self.tmgr.curr_t in self.outfhdl.tfrms:      
+                dtnp=self.outfhdl.tfrms.to_pydatetime().tolist()
+                ifrm=dtnp.index(self.tmgr.curr_t)
                 utils.write_log(
                     '%sparticle dump @ %s' % (print_prefix, self.tmgr.curr_t))
-                self.ptcls.snapshot_pos(self.emission, self.infhdl)
- 
-            self.mesh.update_wind(
+                self.ptcls.snapshot_pos(
+                    self.emission, self.infhdl, self.tmgr.curr_t)
+                if self.debug:
+                    utils.write_log(
+                        '%slat=%7.4f, lon=%7.4f' % (
+                            print_prefix, 
+                            self.ptcls.ds['xlat'][-1], self.ptcls.ds['xlon'][-1]),lvl=10)
+                self.outfhdl.write_frame(self.ptcls.ds, ifrm+1)
+            
+            # update wind with temporal interpolation 
+            self.mesh.update_state(
                 self.tmgr.iofrm, self.tmgr.iofrac)
         
         endtime=time.time()
@@ -77,16 +96,20 @@ class Driver:
     def debuginfo(self):
         iz,iy,ix=self.ptcls.iz[-1],self.ptcls.iy[-1],self.ptcls.ix[-1]
         dx,dy,dz=self.ptcls.dx[-1],self.ptcls.dy[-1],self.ptcls.dz[-1]
+        du,dv,dw=self.ptcls.du[-1],self.ptcls.dv[-1],self.ptcls.dw[-1]
         it=self.ptcls.itramem[-1] 
-        
+        np=self.ptcls.np
+
+        utils.write_log('%sactive particles:%10d' % (print_prefix, np),lvl=10)
+
         utils.write_log('%sptcl0[iz,iy,ix]=(%04d,%04d,%04d),it=%10.1f' % (
             print_prefix,iz,iy,ix,it),lvl=10)
             
         utils.write_log('%sdz=%10.1f,dx=%10.1f,dy=%10.1f' % ( 
             print_prefix,dz,dx,dy),lvl=10)
         
-        utils.write_log(print_prefix+'u=%4.1f,v=%4.1f,w=%8.7f' % (
-            self.mesh.u[iz,iy,ix],self.mesh.v[iz,iy,ix],self.mesh.w[iz,iy,ix]),
+        utils.write_log(print_prefix+'du=%4.1f,dv=%4.1f,dw=%8.7f' % (
+            du,dv,dw),
             lvl=10)
 
 class TimeManager():

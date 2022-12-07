@@ -8,15 +8,27 @@ import numpy as np
 CWD=sys.path[0]
 
 
-
-# Physical Constants
-G=9.8 # m/s2
-R_EARTH=6370000
-T0=273.15 # K
 DEG2RAD=np.pi/180.0
 RAD2DEG=180.0/np.pi
-SCALE_VEL=5.0 # m/s
-LATDIS=111000.0 # m
+
+# Physical Constants
+k=0.4 # Von Karman Constant
+r_air=287.05   # individual gas constant for dry air, J/kg/K
+cp=1004.67     # specific heat of dry air at constant pressure, J/kg/K
+G=9.81 # m/s2
+R_EARTH=6370000
+T0=273.15 # K
+
+# Diffusivity above PBL
+diffz=0.1 # m^2s^-1
+diffh=50.0 # m^2s^-1
+
+SF_HEIGHT=100.0   # surface layer height, m
+SCALE_VEL=5.0 # m/s for velocity scale
+LATDIS=111000.0 # m for 1 deg latitude 
+
+FP32_ISIM=np.float32(1e-30)
+FP32_NEGZERO=np.float32(-0.0)
 
 MAX_DT=3600 # s
 

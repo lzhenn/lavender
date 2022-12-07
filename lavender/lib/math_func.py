@@ -5,6 +5,10 @@ from . import const
 
 @nb.jit(nb.i4[:](nb.float32[:], nb.int64, nb.i4[:]),nopython=True)
 def roundI4(x, decimals, out):
+    '''
+    In: fp32 array, number of decimals, output array
+    OUT: output array Int32
+    '''
     return np.round_(x, decimals, out)
 
 @nb.njit(nb.b1[:](nb.f4[:],),parallel=True,fastmath=True)   
@@ -14,7 +18,27 @@ def non_negflag(x):
     return the non-negative flag of x
     val = (x>=0: 1, x<0: 0)
     '''
-    return np.logical_not(np.signbit(x))
+    return np.invert(np.signbit(x))
+
+def ew(td):
+    """
+    calculate vapor pressure from dew point temperature 
+    purely based on FLEXPART code
+    """
+    ew=0.
+    y=373.16/td
+    a=-7.90298*(y-1.)
+    a=a+(5.02808*0.43429*np.log(y))
+    c=(1.-(1./y))*11.344
+    c=-1.+(10.**c)
+    c=-1.3816*c/(10.**7)
+    d=(1.-y)*3.49149
+    d=-1.+(10.**d)
+    d=8.1328*d/(10.**3)
+    y=a+c+d
+    ew=101324.6*(10.**y)
+    
+    return ew
 
 def great_cir_dis_2d(lat0, lon0, lat1, lon1):
     """ Haversine formula to calculate great circle distance"""  
