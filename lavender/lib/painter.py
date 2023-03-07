@@ -21,6 +21,7 @@ from . import io, utils, const, mtask_tool
 
 print_prefix='lib.painter>>'
 
+ncmap = ListedColormap(cmaps.GMT_globe(range(0,209,2))) 
    
 
 def render3d(cfg,MWD):
@@ -35,13 +36,13 @@ def render3d(cfg,MWD):
         float(cfg['OUTPUT']['lonW']), float(cfg['OUTPUT']['lonE'])
     
     # get topo data
-    topo=__get_topo_data(cfg,MWD)
-    topo=topo.sel(y=slice(latS,latN), x=slice(lonW,lonE))
-    topo_lat,topo_lon,topo_z=topo['y'], topo['x'], topo['z']
+    topo_lat,topo_lon,topo_z = __get_topo_data(cfg,MWD, latN, latS, lonW, lonE)
+    
+   
     ny=topo_lat.shape[0]
     
     # subsampling
-    max_ny=100
+    max_ny=80
     if ny>max_ny:
         zoom_r=int(np.floor(ny/max_ny))+1
         topo_lat=topo_lat[::zoom_r]
@@ -110,10 +111,11 @@ def __mtsk_render3d(
             [topo_lon, topo_lat, np.zeros_like(topo_z)], xyz).sum(0)  
         bars = np.empty(topo_lon.shape, dtype=object)
 
-        ncmap = ListedColormap(cmaps.GMT_globe(range(0,209,2))) 
         #ncmap = ListedColormap(["red","blue","green"])
+        #cnlevels = np.concatenate(
+        #    (np.arange(-3150,0,50),np.arange(0,6150,150)))
         cnlevels = np.concatenate(
-            (np.arange(-3150,0,50),np.arange(0,6150,150)))
+            (np.arange(-315,0,5),np.arange(0,615,15)))
 
 
         for i,(x,y,dz,o) in enumerate(__ravzip(
@@ -132,17 +134,15 @@ def __mtsk_render3d(
             j, k = divmod(i, res)
             bars[j, k] = pl = ax.bar3d(x, y, 0, dx, dy, dz, color0)
             pl._sort_zpos = o
-        
         ax.scatter(
             plon, plat,pz, marker='.', color='white',
             zorder=999999, s=1, alpha=0.1)   
-        
         ax.set_facecolor('k')
         ax.set_zscale('log')
         #ax.set_xlim(lonW,lonE)
         #ax.set_ylim(latS,latN)
-        ax.set_zlim(0, 10000)
-        ax.view_init(elev=53.0-gidx/6.0, azim=-75+gidx/6.0)
+        ax.set_zlim(0, 3000)
+        ax.view_init(elev=45.0-gidx/3.0, azim=-60+gidx/3.0)
         ax.grid(False)
         plt.axis('off')
  
@@ -161,6 +161,9 @@ def __mtsk_render3d(
         # break for test
         # break
     return 0
+
+
+
 def __sph2cart(r, theta, phi):
     '''spherical to cartesian transformation.'''
     x = r * np.sin(theta) * np.cos(phi)
@@ -182,11 +185,12 @@ def __ravzip(*itr):
  
     
         
-def __get_topo_data(cfg,MWD):
+def __get_topo_data(cfg, MWD, latN, latS, lonW, lonE):
     '''
     get topo data from topo file
     '''
-    topo_file=os.path.join(MWD,'db/etopo.nc')
+    fn=cfg['postprocess']['topo_file']
+    topo_file=os.path.join(MWD,'db/', fn)
     if not(os.path.exists(topo_file)):
         utils.write_log(
             print_prefix+topo_file+' not exist, skip...', lvl=30)
@@ -194,5 +198,11 @@ def __get_topo_data(cfg,MWD):
     else:
         utils.write_log(print_prefix+'load topo data from '+topo_file)
         topo=xr.open_dataset(topo_file)
-        return topo
-    exit()
+    if fn == 'etopo.nc':
+        topo=topo.sel(y=slice(latS,latN), x=slice(lonW,lonE))
+        topo_lat,topo_lon,topo_z=topo['y'], topo['x'], topo['z']
+    elif fn == 'hk_dtm_100m.nc':
+        topo=topo.sel(lat_rho=slice(latS,latN), lon_rho=slice(lonW,lonE))
+        topo_lat,topo_lon,topo_z=topo['lat_rho'], topo['lon_rho'], topo['h']
+    
+    return topo_lat,topo_lon,topo_z

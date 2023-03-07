@@ -1,6 +1,7 @@
-#/usr/bin/env python3
+#!/usr/bin/env python3
 """specific module for IO"""
-import datetime, struct, os, gc, time
+import numpy as np
+import datetime, struct, os, gc
 import pandas as pd
 from scipy.io import FortranFile, FortranEOFError
 
@@ -10,6 +11,9 @@ from . import utils, const, cfgparser
 import netCDF4 as nc4
 import xarray as xr
 import wrf 
+
+# plt output
+from plyfile import PlyData, PlyElement
 
 print_prefix='lib.io>>'
 
@@ -33,7 +37,8 @@ class FileHandler():
             utils.throw_error(
                 print_prefix+'''cannot generate time frames,
                 check init_t, end_t, and output_frq in config file''')
-        self.tfrms=time_frms[1:] # ignore the first frame (no emission) 
+        self.tfrms=time_frms # ignore the first frame (no emission) 
+        #self.tfrms=time_frms[1:] # ignore the first frame (no emission) 
         self.file_list=[]
         for ts in time_frms:
             self.file_list.append(
@@ -82,8 +87,17 @@ class InHandler(FileHandler):
         self.dx=wrf_hdl.DX
         abz3d=wrf.getvar(wrf_hdl,'z') # model layer elevation above sea level
         abz3d_stag=wrf.getvar(wrf_hdl,'zstag') # model layer elevation above sea level
-        ter=wrf.getvar(wrf_hdl,'ter') # terrain height  
+        
+        # terrain height  
+        ter=wrf.getvar(wrf_hdl,'ter') 
         self.ter=ter 
+
+        # terrain gradient 
+        ter_xstag=utils.pad_var2d(ter, 'tail', dim=1)
+        ter_ystag=utils.pad_var2d(ter, 'tail', dim=0)
+        self.terdx=((ter_xstag[:,1:]-ter)/self.dx)
+        self.terdy=((ter_ystag[1:,:]-ter)/self.dx)
+        
         # model layer elevation above terrain
         #self.z=self.z-ter.mean(['south_north','west_east'])
         self.z=(abz3d-ter).mean(['south_north','west_east'])
@@ -278,3 +292,18 @@ def acc_ptcl_dump_ds(idx, xlat, xlon, xh, xtime, glb_time):
     )
     return ds
 
+def outply(ptcls, fn):
+    '''
+    output ply file
+    '''
+    utils.write_log(print_prefix+'convert output '+fn)
+    nptcl=ptcls.xlat.shape[0]
+    cell = np.array([(0, 0, 0, 100, 100, 100, 100)],
+       dtype=[('x', 'f4'), ('y', 'f4'),('z', 'f4'),
+              ('intensity', 'u1'), ('red', 'u1'),
+              ('green', 'u1'), ('blue', 'u1')])
+    
+    vertex=np.repeat(cell, nptcl, axis=0)
+    vertex['x'], vertex['y'], vertex['z']=ptcls.xlon, ptcls.xlat, ptcls.ztra1
+    el = PlyElement.describe(vertex, 'vertex')
+    PlyData([el], text=True).write(fn) 

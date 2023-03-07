@@ -53,8 +53,6 @@ class Particles:
         self.dx, self.dy, self.dz=\
             __ARFP32.copy(),__ARFP32.copy(),__ARFP32.copy()
         self.ztra1,self.topo=__ARFP32.copy(),__ARFP32.copy()
-        self.du, self.dv, self.dw=\
-            __ARFP32.copy(),__ARFP32.copy(),__ARFP32.copy()
         self.pvi,self.qvi,self.rhoi,self.hmixi=\
             __ARFP32.copy(),__ARFP32.copy(),__ARFP32.copy(),__ARFP32.copy()
         self.tri,self.tti=__ARFP32.copy(),__ARFP32.copy()
@@ -86,13 +84,12 @@ class Particles:
             self.dx,self.dy,self.dz,
             self.itramem, self.np)=kernel.cpu_advection(
                 mesh.u, mesh.v, mesh.w,
-                self.du, self.dv, self.dw, self.np,
                 self.ix, self.iy, self.iz, 
                 self.dx, self.dy, self.dz,
                 self.itramem, self.ix0, self.iy0,
                 self.EOdx, self.EOdy, 
                 mesh.dt, mesh.dx, self.z0,
-                mesh.z_c0,mesh.z_c1,
+                mesh.z_c0, mesh.z_c1,
                 sigu=mesh.sigu, sigv=mesh.sigv, sigw=mesh.sigw, 
                 tauu=mesh.tauu, tauv=mesh.tauv, tauw=mesh.tauw
                 )
@@ -101,7 +98,7 @@ class Particles:
             self.dx,self.dy,self.dz,
             self.itramem, self.np)=kernel.cpu_advection(
                 mesh.u, mesh.v, mesh.w,
-                self.du, self.dv, self.dw, self.np,
+                self.du, self.dv, self.dw, 
                 self.ix, self.iy, self.iz, 
                 self.dx, self.dy, self.dz,
                 self.itramem, self.ix0, self.iy0,

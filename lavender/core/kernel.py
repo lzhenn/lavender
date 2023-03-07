@@ -104,18 +104,19 @@ def cpu_lambert_pos(
     return plat, plon
 
 @nb.njit(parallel=True,fastmath=True)
-def get_vel(v, pv, idx, idy, idz, napt):
+def get_vel(v, idx, idy, idz, napt):
     '''
     get velocity of the parcel at the position [idx,idy,idz]
     of the particle
     '''
+    pv=np.zeros(napt)
     for i in nb.prange(napt):
         # id of active particles
         id=-napt+i
         iz,iy,ix=idz[id],idy[id],idx[id]
         pv[i]=v[iz,iy,ix]
 
-    return pv
+    return pv.astype(np.float32)
 
 @nb.njit(parallel=True,fastmath=True)
 def cal_zoter(pz, ter, idx, idy, napt):
@@ -126,12 +127,13 @@ def cal_zoter(pz, ter, idx, idy, napt):
     return pz
  
 @nb.njit(parallel=True,fastmath=True)
-def turb_xy(v, pv, dv, idx, idy, idz, dt, napt, sigv, tauv):
+def turb_xy(idx, idy, idz, dt, napt, sigv, tauv):
     '''
     calculate turbulence effect on velocity
     du, dv
     '''
     np.random.seed(0)
+    dv=np.zeros(napt)
     r=np.random.normal(0.0, 1.0, napt)
     for i in nb.prange(napt):
         # id of active particles
@@ -139,20 +141,19 @@ def turb_xy(v, pv, dv, idx, idy, idz, dt, napt, sigv, tauv):
         iz,iy,ix=idz[id],idy[id],idx[id]
         sgv=sigv[iz,iy,ix]
         tuv=tauv[iz,iy,ix]
-        pv[i]=v[iz,iy,ix]
-        dv[id]=pv[i]*r[i]
-
-    pv=pv+dv[-napt:]
-    return pv
+        #dv[id]=pv[i]*r[i] # simplest works
+        dv[i]=sgv*np.sqrt(2.0*dt/tuv)*r[i]
+    return dv.astype(np.float32)
 
 @nb.njit(parallel=True,fastmath=True)
-def turb_z(w, pw, dw, idx, idy, idz, dt, napt, sigw, tauw):
+def turb_z(w, idx, idy, idz, dt, napt, sigw, tauw):
     '''
     calculate turbulence effect on velocity
     dw
     '''
     np.random.seed(0)
     r=np.random.normal(0.0, 1.0, napt)
+    pw=np.zeros(napt)
     for i in nb.prange(napt):
         # id of active particles
         id=-napt+i
@@ -160,16 +161,13 @@ def turb_z(w, pw, dw, idx, idy, idz, dt, napt, sigw, tauw):
         sgw=sigw[iz,iy,ix]
         tuw=tauw[iz,iy,ix]
         pw[i]=w[iz,iy,ix]
-        dw[id]=pw[i]*r[i]
-
-    pw=pw+dw[-napt:]
-    return pw
-
+        pw[id]=pw[i]*(1.0+r[i]) # simplest works
+        #pw[i]=pw[i]+sgw*np.sqrt(2.0*dt/tuw)*r[i]
+    return pw.astype(np.float32)
 
 
 def cpu_advection(
-    u, v, w, du, dv, dw, napt,
-    pidx, pidy, pidz, pdx, pdy, pdz,
+    u, v, w, pidx, pidy, pidz, pdx, pdy, pdz,
     pt, ix0, iy0, EOx, EOy, dt, DX, z0, zc0, zc1, **kw):
     """
     March the air parcel (single) in the UVW fields
@@ -187,29 +185,30 @@ def cpu_advection(
     # np number of active particles
     napt=np.sum(drift_flag)+np.sum(emit_flag)
     
-    pu,pv,pw=\
-        np.zeros(napt).astype(np.float32),\
-        np.zeros(napt).astype(np.float32),\
-        np.zeros(napt).astype(np.float32)
-    if kw =={}: 
-        pu=get_vel(u, pu, pidx, pidy, pidz, napt)
-        pv=get_vel(v, pv, pidx, pidy, pidz, napt)
-        pw=get_vel(w, pw, pidx, pidy, pidz, napt)
-    else:
-        # turbulence
-        pu =turb_xy(
-            u, pu, du, pidx, pidy, pidz, dt, napt, kw['sigu'], kw['tauu'])
-        pv=turb_xy(
-            v, pv, dv, pidx, pidy, pidz, dt, napt, kw['sigv'], kw['tauv'])
+    pu=get_vel(u, pidx, pidy, pidz, napt)
+    pv=get_vel(v, pidx, pidy, pidz, napt)
+    #pw=get_vel(w, pidx, pidy, pidz, napt)
+    if not(kw =={}): # advection+turbulence
+        # normal direction turbulent velocity
+        du =turb_xy(
+            pidx, pidy, pidz, dt, napt, kw['sigu'], kw['tauu'])
+        # tangent direction turbulent velocity
+        dv=turb_xy(
+            pidx, pidy, pidz, dt, napt, kw['sigv'], kw['tauv'])
+        
+        du,dv=math_func.rotuv(du, dv, pu, pv)
+        pu=pu+du
+        pv=pv+dv
+        
         #pw=get_vel(w, pw, pidx, pidy, pidz, napt)
         pw=turb_z(
-            w, pw, dw, pidx, pidy, pidz, dt, napt, kw['sigw'], kw['tauw'])
+            w, pidx, pidy, pidz, dt, napt, kw['sigw'], kw['tauw'])
         
 
     # calculate the displacement
     pdx=adv(pu, pdx, dt, napt, drift_flag, pt, emit_flag)
     pdy=adv(pv, pdy, dt, napt, drift_flag, pt, emit_flag)
-    pdz=adv_z(pw, pdz, dt, napt, drift_flag, pt, emit_flag)
+    pdz=adv_z(pw, pdz, dt, napt, z0, drift_flag, pt, emit_flag)
     # update position
     #temp=np.empty_like(pidx, order='C')
     pidz=reloc_z(pidz, z0, nz, pdz, zc0, rc0, rlnc1)

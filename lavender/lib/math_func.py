@@ -20,6 +20,29 @@ def non_negflag(x):
     '''
     return np.invert(np.signbit(x))
 
+def rotuv(nu, tv, mu, mv):
+    '''
+    rotate normal and tangent dircetion of uv 
+    to WRF projection coordinate
+    nu: normal u, tv: tangent v
+    mu: mean u on WRF mesh, mv: mean v on WRF mesh
+    '''
+    
+    ffinv=1./wind_speed(mu, mv)
+    sinphi=mv*ffinv
+    vy1=sinphi*nu
+    cosphi=mu*ffinv
+    ux1=cosphi*nu
+    
+    ux2=-sinphi*tv
+    vy2=cosphi*tv
+
+    # Add contributions from along and cross wind components
+    du=ux1+ux2
+    dv=vy1+vy2    
+
+    return du, dv
+
 def ew(td):
     """
     calculate vapor pressure from dew point temperature 
@@ -87,7 +110,9 @@ def wswd2uv(ws, wd):
 
 def wind_speed(u, v):
     """ calculate wind speed according to U and V """
-    return np.sqrt(u*u+v*v)
+    ws=np.sqrt(u*u+v*v)
+    ws=np.where(ws==0.0, const.FP32_ISIM, ws)
+    return ws
 
 def temp_prof(temp0, h0, p0, tgt_h, l):
     """ 

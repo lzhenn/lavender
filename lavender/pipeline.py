@@ -9,6 +9,8 @@ This is the main script to drive the model
 History:
 Nov 03, 2022 --- Kick off! 
 Nov 06, 2022 --- FLEXPART output support for rendering
+Nov 21, 2022 --- Advection done
+Dec 09, 2022 --- Preliminary Hanna turbulence   
 
 L_Zealot
 '''
@@ -29,12 +31,15 @@ def waterfall():
     Waterfall rundown!
     '''
     #if not(os.path.exists(CWD+'/config.case.ini')):
-    copyfile(MWD+'/conf/config.case.ini', CWD+'/config.case.ini')
+    copyfile(
+        os.path.join(MWD,'conf','config.case.ini'), 
+        os.path.join(CWD,'config.case.ini'))
+
     #print('Template config file created, please modify it and run again!')
-    cfg=cfgparser.read_cfg(CWD+'/config.case.ini')
+    cfg=cfgparser.read_cfg(os.path.join(CWD,'config.case.ini'))
     
     # logging manager
-    logging.config.fileConfig(MWD+'/conf/config.logging.ini')
+    logging.config.fileConfig(os.path.join(MWD,'conf','config.logging.ini'))
     
     utils.write_log('Config validation test...')
     #cfgparser.cfg_valid_test(cfg)

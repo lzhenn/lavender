@@ -99,6 +99,10 @@ class Mesh:
         '''
         inhdl=self.inhdl
         inhdl.load_frame(frm)    
+
+        # convert vertical velocity to terrain-following
+        w_ter=self.conv_vert_vel(inhdl)
+
         f = interpolate.interp1d(
             inhdl.z.values, inhdl.U.values, axis=0,fill_value='extrapolate')
         u = f(self.z).astype(np.float32)
@@ -112,8 +116,22 @@ class Mesh:
             axis=0,fill_value='extrapolate')
         w = f(self.z).astype(np.float32)
         
+
         # no effective pbl paras in wrfout
         return u,v,w
+    
+    def conv_vert_vel(self, inhdl):
+        '''
+        convert vertical velocity to terrain-following  
+        '''
+        u,v,w=inhdl.U.values, inhdl.V.values, inhdl.W.values
+        terdx_3d=np.broadcast_to(
+            inhdl.terdx, (u.shape[0], u.shape[1], u.shape[2]))
+        terdy_3d=np.broadcast_to(
+            inhdl.terdy, (u.shape[0], u.shape[1], u.shape[2]))
+        w_ter=w-u*terdx_3d-v*terdy_3d
+
+        return w_ter
 
     def update_state(self, iofrm, iofrac):
         '''
@@ -133,6 +151,7 @@ class Mesh:
         self.v=self.v0*(1-iofrac)+self.v1*iofrac
         self.w=self.w0*(1-iofrac)+self.w1*iofrac
 
+    
     def cal_turb_paras(self):
         '''
         calculate pbl parameters
