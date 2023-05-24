@@ -2,6 +2,8 @@
 ![](https://github.com/Novarizark/lavender/blob/master/lavender.png?raw=true)
 Lavender is a Lagrangian dispersion model suitable for the simulation of atmospheric transport processes within O(1-100km) spatial scales.
 
+**NOTE:** For the 3D Renderer, it has been tested that python 3.10 with matplotlib 3.7.1 is much slower (8X) than python 3.8 with matplotlib 3.4.3.
+
 ### Input Files
 
 #### config.ini

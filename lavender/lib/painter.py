@@ -13,6 +13,8 @@ import os
 import numpy as np
 import xarray as xr 
 from multiprocessing import Pool
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import cmaps
@@ -22,6 +24,8 @@ from . import io, utils, const, mtask_tool
 print_prefix='lib.painter>>'
 
 ncmap = ListedColormap(cmaps.GMT_globe(range(0,209,2))) 
+# subsampling
+max_ny=300
    
 
 def render3d(cfg,MWD):
@@ -34,15 +38,14 @@ def render3d(cfg,MWD):
         float(cfg['OUTPUT']['latN']), float(cfg['OUTPUT']['latS'])
     lonW, lonE=\
         float(cfg['OUTPUT']['lonW']), float(cfg['OUTPUT']['lonE'])
-    
     # get topo data
     topo_lat,topo_lon,topo_z = __get_topo_data(cfg,MWD, latN, latS, lonW, lonE)
     
-   
+    zbot,ztop=0,15000
+    bnd_lim=[lonW,lonE,latS,latN,zbot,ztop]
+
     ny=topo_lat.shape[0]
     
-    # subsampling
-    max_ny=80
     if ny>max_ny:
         zoom_r=int(np.floor(ny/max_ny))+1
         topo_lat=topo_lat[::zoom_r]
@@ -71,7 +74,7 @@ def render3d(cfg,MWD):
             __mtsk_render3d, 
             args=(
                 itsk, mtsks_lst, file_hdler, 
-                topo_lat, topo_lon, topo_z, dx, dy))
+                topo_lat, topo_lon, topo_z, dx, dy, bnd_lim))
         results.append(result)
     print(results[0].get())
     process_pool.close()
@@ -79,7 +82,7 @@ def render3d(cfg,MWD):
 
 
 def __mtsk_render3d(
-        itsk, seg_list, fh, topo_lat, topo_lon, topo_z, dx, dy):
+        itsk, seg_list, fh, topo_lat, topo_lon, topo_z, dx, dy, bnd_lim):
     
     len_seg=len(seg_list[itsk])    
     for subid, ts in enumerate(seg_list[itsk]):
@@ -97,7 +100,16 @@ def __mtsk_render3d(
                 print_prefix, itsk, subid+1, len_seg, ts, prtarray.nptcls))
         
         plon,plat,pz=prtarray.xlon, prtarray.xlat, prtarray.ztra1
-       
+        # Create a mask that selects the points within the specified boundary
+        lonW,lonE,latS,latN,zbot,ztop=bnd_lim
+        mask = (plat >= latS) & (plat <= latN) & (
+            plon >= lonW) & (plon <= lonE) & (pz >= zbot) & (pz <= ztop)
+
+        # Apply the mask to the point positions to extract the points within the boundary
+        plon = plon[mask]
+        plat = plat[mask]
+        pz = pz[mask] 
+
         fig = plt.figure(
             figsize=[const.FIG_WIDTH, const.FIG_HEIGHT],dpi=150)
 
@@ -115,7 +127,7 @@ def __mtsk_render3d(
         #cnlevels = np.concatenate(
         #    (np.arange(-3150,0,50),np.arange(0,6150,150)))
         cnlevels = np.concatenate(
-            (np.arange(-315,0,5),np.arange(0,615,15)))
+            (np.arange(-1575,0,25),np.arange(0,3075,75)))
 
 
         for i,(x,y,dz,o) in enumerate(__ravzip(
@@ -139,16 +151,17 @@ def __mtsk_render3d(
             zorder=999999, s=1, alpha=0.1)   
         ax.set_facecolor('k')
         ax.set_zscale('log')
-        #ax.set_xlim(lonW,lonE)
-        #ax.set_ylim(latS,latN)
-        ax.set_zlim(0, 3000)
-        ax.view_init(elev=45.0-gidx/3.0, azim=-60+gidx/3.0)
+        ax.set_xlim(lonW,lonE)
+        ax.set_ylim(latS,latN)
+        ax.set_zlim(zbot, ztop)
+        ax.view_init(elev=50.0-0*gidx/3.0, azim=-70+0*gidx/3.0)
         ax.grid(False)
+        ax.annotate(
+            'AirTracers@%s' % fh.tfrms[gidx].strftime(const.Y_M_D_H_M),
+            xy=(0.5, 0.95), xycoords='axes fraction', ha='center', 
+            va='top', fontfamily='monospace', fontsize=const.MIDFONT, color='white')        
+        
         plt.axis('off')
- 
-        plt.title(
-            'AirTracers %s' % fh.tfrms[gidx].strftime(const.YMDHM),
-            fontsize=const.MIDFONT)
                 
         figpath=os.path.join(
             const.CWD, 
@@ -204,5 +217,6 @@ def __get_topo_data(cfg, MWD, latN, latS, lonW, lonE):
     elif fn == 'hk_dtm_100m.nc':
         topo=topo.sel(lat_rho=slice(latS,latN), lon_rho=slice(lonW,lonE))
         topo_lat,topo_lon,topo_z=topo['lat_rho'], topo['lon_rho'], topo['h']
-    
+    topo_z=topo_z.where(topo_z>0,-150)
+    topo_z=topo_z/2
     return topo_lat,topo_lon,topo_z

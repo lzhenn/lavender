@@ -69,6 +69,7 @@ FRM_MARGIN=[0.0, 0.0, 1.0, 1.0]
 
 # Miscellaneous
 YMDHM='%Y%m%d%H%M'
+Y_M_D_H_M='%Y-%m-%d %H:%M'
 YMDHMS='%Y%m%d%H%M%S'
 
 
